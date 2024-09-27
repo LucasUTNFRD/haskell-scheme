@@ -7,11 +7,19 @@ data LispVal = Atom String
              | List [LispVal]
              | DottedList [LispVal] LispVal
              | Number Integer
+             | Float Float
              | String String
              | Bool Bool
+             deriving(Show)
+
+
+-- TODO 
+-- implement Float constructor to LispValm abd support R5R5 syntaax for decimals (done). 
+--Change parseNumber to support the Scheme standard for different bases. You may find the readOct and readHex functions useful.
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
+
 
 spaces :: Parser()
 spaces = skipMany1 space
@@ -27,9 +35,20 @@ readExpr input = case parse parseExpr "lisp" input of
 parseString :: Parser LispVal
 parseString = do 
                 char '"'
-                x <- many (noneOf "\"")
+                x <- many (escapedChar <|> noneOf "\"")
                 char '"'
                 return $ String x
+
+escapedChar :: Parser Char 
+escapedChar = do 
+                char '\\' -- parse the backslash
+                c <- oneOf "\\\"nrt"
+                return $ case c of
+                        'n'  -> '\n'
+                        'r'  -> '\r'
+                        't'  -> '\t'
+                        '\\' -> '\\'
+                        '"'  -> '"'  -- Escape the double quote
 
 parseAtom :: Parser LispVal
 parseAtom = do 
@@ -40,17 +59,63 @@ parseAtom = do
                          "#t" -> Bool True
                          "#f" -> Bool False
 
+-- many1 is a parser combinator that parses one or more digits
+
+parseFloat :: Parser LispVal
+parseFloat = do 
+            firstDigit <- many1 digit
+            fracPart <- option "" $ do
+              char '.' --decimal part
+              decimal <- many1 digit
+              return ('.':decimal)
+            let number = firstDigit ++ fracPart 
+            return $ (Float . read) number
+
+-- parseNumber :: Parser LispVal
+-- parseNumber = liftM (Number . read) $ many1 digit
+
+-- do notation implementation
 parseNumber :: Parser LispVal
-parseNumber = liftM (Number . read) $ many1 digit
+parseNumber = do 
+              digits <- many1 digit
+              return $ (Number . read) digits
+
+parseList :: Parser LispVal
+parseList = do 
+            expr <- sepBy parseExpr spaces
+            return $ List  expr
+
+parseDottedList :: Parser LispVal
+parseDottedList = do
+    head <- endBy parseExpr spaces
+    tail <- char '.' >> spaces >> parseExpr
+    return $ DottedList head tail
+
+parseQuoted :: Parser LispVal
+parseQuoted = do
+    char '\''
+    x <- parseExpr
+    return $ List [Atom "quote", x]
+
+--explicit >>= binding 
+-- parseNumber :: Parser LispVal
+-- parseNumber = many1 digit >>= \x -> return $ (Number . read) x
 
 parseExpr :: Parser LispVal
 parseExpr = parseAtom
          <|> parseString
          <|> parseNumber
+         <|> parseFloat 
+         <|> parseQuoted 
+         <|> do char '('
+                x <- try parseList  <|> parseDottedList
+                char ')'
+                return x
 
 
 main :: IO ()
--- main = putStrLn "Hello, Haskell!"
-main = do
-    (expr:_) <- getArgs
-    putStrLn (readExpr expr)
+main = do 
+         (expr:_) <- getArgs
+         putStrLn (readExpr expr)
+--     (expr:_) <- getArgs
+--     pumain :: IO ()
