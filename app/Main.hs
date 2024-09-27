@@ -10,6 +10,9 @@ data LispVal = Atom String
              | Float Float
              | String String
              | Bool Bool
+             | QuasiQuote LispVal -- represent an expression quoted with `.
+             | Unquote LispVal -- represent an expresison unquoted wiht ,.
+             | UnquoteSplicing LispVal -- represent an expression spliced into a list with ,@.
              deriving(Show)
 
 
@@ -97,18 +100,40 @@ parseQuoted = do
     x <- parseExpr
     return $ List [Atom "quote", x]
 
+parseQuasiqoute :: Parser LispVal
+parseQuasiqoute = do
+                  char '`'
+                  x <- parseExpr 
+                  return $ QuasiQuote x
+
+
+parseUnquote:: Parser LispVal
+parseUnquote = do
+                  char ','
+                  x <- parseExpr 
+                  return $ Unquote x
+
+parseUnquoteSplicing :: Parser LispVal
+parseUnquoteSplicing = do
+    string ",@"  -- Look for ,@
+    x <- parseExpr  -- Parse the expression after ,@
+    return $ UnquoteSplicing x
 --explicit >>= binding 
 -- parseNumber :: Parser LispVal
 -- parseNumber = many1 digit >>= \x -> return $ (Number . read) x
 
+-- the try combinator attempts to run specified parser, but if it fails, it backs up to the previous state
 parseExpr :: Parser LispVal
 parseExpr = parseAtom
          <|> parseString
          <|> parseNumber
          <|> parseFloat 
          <|> parseQuoted 
+         <|> parseQuasiqoute
+         <|> parseUnquote
+         <|> try parseUnquoteSplicing 
          <|> do char '('
-                x <- try parseList  <|> parseDottedList
+                x <- try parseList  <|> parseDottedList  -- backtracking
                 char ')'
                 return x
 
