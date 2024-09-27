@@ -13,7 +13,22 @@ data LispVal = Atom String
              | QuasiQuote LispVal -- represent an expression quoted with `.
              | Unquote LispVal -- represent an expresison unquoted wiht ,.
              | UnquoteSplicing LispVal -- represent an expression spliced into a list with ,@.
-             deriving(Show)
+
+showVal :: LispVal -> String
+showVal (String contents) = "\"" ++ contents ++ "\""
+showVal (Atom name) = name
+showVal (Number contents) = show contents
+showVal (Bool True) = "#t"
+showVal (Bool False) = "#f"
+showVal (List contents) = "(" ++ unwordsList contents ++ ")"
+showVal (DottedList head tail) = "(" ++ unwordsList head ++ " . " ++ showVal tail ++ ")"
+
+-- this definiton doesnt includes any args. This is an expalme of point-free style
+-- Purely in terms of function composition and partial applicatio
+unwordsList :: [LispVal]-> String
+unwordsList = unwords . map showVal
+
+instance Show LispVal where show = showVal
 
 
 -- TODO 
@@ -33,7 +48,7 @@ spaces = skipMany1 space
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
     Left err -> "No match: " ++ show err
-    Right _ -> "Found value"
+    Right val -> "Found " ++ show val
 
 parseString :: Parser LispVal
 parseString = do 
