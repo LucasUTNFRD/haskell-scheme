@@ -14,6 +14,25 @@ data LispVal = Atom String
              | Unquote LispVal -- represent an expresison unquoted wiht ,.
              | UnquoteSplicing LispVal -- represent an expression spliced into a list with ,@.
 
+eval :: LispVal -> LispVal
+eval val@(String _) = val
+eval val@(Number _) = val
+eval val@(Bool _) = val
+eval (List [Atom "quote", val]) = val
+eval (List (Atom func : args)) = apply func $ map eval args
+
+apply :: String -> [LispVal] -> LispVal
+apply "+" args = Number $ foldl1 (+) $ map unpack args
+apply "-" args = Number $ foldl1 (-) $ map unpack args
+apply "*" args = Number $ foldl1 (*) $ map unpack args
+apply "/" args = Number $ foldl1 div $ map unpack args
+apply func _ = error $ "Unknown function: " ++ func
+--
+unpack :: LispVal -> Integer 
+unpack (Number n) = n
+unpack (List [n]) = unpack n
+unpack _ = error "Expected a number"
+
 showVal :: LispVal -> String
 showVal (String contents) = "\"" ++ contents ++ "\""
 showVal (Atom name) = name
@@ -45,10 +64,10 @@ spaces = skipMany1 space
 -- use >> if the actions don't return a value,
 -- >>= if you'll be immediately passing that value into the next action, 
 -- do-notation otherwise. 
-readExpr :: String -> String
+readExpr :: String -> LispVal
 readExpr input = case parse parseExpr "lisp" input of
-    Left err -> "No match: " ++ show err
-    Right val -> "Found " ++ show val
+    Left err -> String $ "No match: " ++ show err
+    Right val -> val
 
 parseString :: Parser LispVal
 parseString = do 
@@ -76,6 +95,7 @@ parseAtom = do
               return $ case atom of 
                          "#t" -> Bool True
                          "#f" -> Bool False
+                         _    -> Atom atom  -- Default case for any other atom
 
 -- many1 is a parser combinator that parses one or more digits
 
@@ -156,6 +176,6 @@ parseExpr = parseAtom
 main :: IO ()
 main = do 
          (expr:_) <- getArgs
-         putStrLn (readExpr expr)
+         putStrLn $ show $ eval $ readExpr expr
 --     (expr:_) <- getArgs
 --     pumain :: IO ()
