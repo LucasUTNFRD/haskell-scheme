@@ -28,9 +28,51 @@ eval val@(String _) = return val
 eval val@(Number _) = return val
 eval val@(Bool _) = return val
 eval (List [Atom "quote", val]) = return val
+eval (List [Atom "if", pred, conseq, alt]) = 
+     do result <- eval pred
+        case result of
+             Bool False -> eval alt
+             otherwise  -> eval conseq
+
 eval (List (Atom func : args)) = mapM eval args >>= apply func
 eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
+
+-- TODO 
+-- implement cdr 
+-- implemt car
+
+
+-- This function returns the first element of a list. For example:
+-- (car '(a b c)) = a
+-- (car '(a)) = a
+-- (car '(a b . c)) = a
+-- (car 'a) = error – not a list
+-- (car 'a 'b) = error – car only takes one argument
+car :: [LispVal] -> ThrowsError LispVal
+car [List (x:xs)] = return x
+car [DottedList(x:xs) _] = return x
+car [badArg]  = throwError $ TypeMismatch "pair" badArg
+car badArgList = throwError $ NumArgs 1 badArgList
+ 
+-- (cdr '(a b c)) = (b c)
+-- (cdr '(a b)) = (b)
+-- (cdr '(a)) = NIL
+-- (cdr '(a . b)) = b
+-- (cdr '(a b . c)) = (b . c)
+-- (cdr 'a) = error – not a list 
+-- (cdr 'a 'b) = error – too many arguments
+cdr :: [LispVal] -> ThrowsError LispVal
+cdr [List (_:xs)] = return $ List xs
+cdr [DottedList[_] x] = return x
+cdr [DottedList(_:xs) x] = return $ DottedList xs x
+cdr [badArg]  = throwError $ TypeMismatch "pair" badArg
+cdr badArgList = throwError $ NumArgs 1 badArgList
+
+
+cons :: [LispVal] -> ThrowsError LispVal
+cons [x1, List []] = return $ List [x1]
+cons [x, List xs] = return $ List (x:xs)
 
 
 primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
@@ -40,8 +82,35 @@ primitives = [("+", numericBinop (+)),
               ("/", numericBinop div),
               ("mod", numericBinop mod),
               ("quotient", numericBinop quot),
-              ("remainder", numericBinop rem)]
+              ("remainder", numericBinop rem),
+              ("=", numBoolBinop (==)),
+              ("<", numBoolBinop (<)),
+              (">", numBoolBinop (>)),
+              ("/=", numBoolBinop (/=)),
+              (">=", numBoolBinop (>=)),
+              ("<=", numBoolBinop (<=)),
+              ("&&", boolBoolBinop (&&)),
+              ("||", boolBoolBinop (||)),
+              ("string=?", strBoolBinop (==)),
+              ("string<?", strBoolBinop (<)),
+              ("string>?", strBoolBinop (>)),
+              ("string<=?", strBoolBinop (<=)),
+              ("string>=?", strBoolBinop (>=)),
+              ("car",car),
+              ("cdr",cdr),
+              ("cons",cons)]
 
+numBoolBinop  = boolBinop unpackNum
+strBoolBinop  = boolBinop unpackStr
+boolBoolBinop = boolBinop unpackBool
+
+boolBinop :: (LispVal -> ThrowsError a) -> (a -> a -> Bool) -> [LispVal] -> ThrowsError LispVal
+boolBinop unpacker op args = if length args /= 2 
+                             then throwError $ NumArgs 2 args
+                             else do 
+                                left <- unpacker $ args !! 0
+                                right <- unpacker $ args !! 1
+                                return $ Bool $ left `op` right
 
 numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> ThrowsError LispVal
 numericBinop op           []  = throwError $ NumArgs 2 []
@@ -53,6 +122,8 @@ apply func args = maybe (throwError $ NotFunction "Unrecognized primitive functi
                         ($ args)
                         (lookup func primitives)
 
+
+-- ######### unpack functions #########
 unpackNum :: LispVal -> ThrowsError Integer
 unpackNum (Number n) = return n
 unpackNum (String n) = let parsed = reads n in 
@@ -62,6 +133,16 @@ unpackNum (String n) = let parsed = reads n in
 unpackNum (List [n]) = unpackNum n
 unpackNum notNum     = throwError $ TypeMismatch "number" notNum
 
+unpackStr:: LispVal -> ThrowsError String 
+unpackStr (String s) = return s
+unpackStr (Number s) = return $ show s
+unpackStr (Bool s) = return $ show  s
+
+unpackBool :: LispVal -> ThrowsError Bool
+unpackBool (Bool b) = return b
+unpackBool notBool  = throwError $ TypeMismatch "boolean" notBool
+
+-- ######### show functions #########
 showVal :: LispVal -> String
 showVal (String contents) = "\"" ++ contents ++ "\""
 showVal (Atom name) = name
